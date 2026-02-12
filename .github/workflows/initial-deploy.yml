@@ -24,6 +24,17 @@ jobs:
           scheme: calver
           increment: patch
 
+      - name: Lookup Project ID
+        id: lookup_project_id
+        run: |
+            curl \
+            --header "Authorization: Bearer ${{ secrets.TFE_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request GET \
+            --output project_output.txt \
+            https://app.terraform.io/api/v2/organizations/${{ github.repository_owner }}/projects
+            echo "project_id=$(jq -r --arg name '${{ vars.TFE_PROJECT }}' '.data[] | select(.attributes.name | test($name; "i")) | .id' project_output.txt)" >> $GITHUB_OUTPUT
+
       - name: Create Release branch
         uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f
         with:
@@ -54,25 +65,33 @@ jobs:
       - name: Create workspace
         id: create_workspace_dev
         run: |
-          cat > payload.json <<EOF
-          {
-            "data": {
-              "attributes": {
-                "name": "${{ github.event.repository.name }}-dev",
-                "auto-apply": "true"
-              },
-              "type": "workspaces"
-            }
-          }
-          EOF
-          curl \
-          --header "Authorization: Bearer ${{ secrets.TFE_TOKEN }}" \
-          --header "Content-Type: application/vnd.api+json" \
-          --request POST \
-          --data @payload.json \
-          --output output.txt \
-          https://app.terraform.io/api/v2/organizations/${{ github.repository_owner }}/workspaces
-          echo "workspace_id=$(cat output.txt | jq -r '.[].id')" >> $GITHUB_OUTPUT
+              cat > payload.json <<EOF
+              {
+                "data": {
+                  "attributes": {
+                    "name": "${{ github.event.repository.name }}-dev",
+                    "auto-apply": "true"
+                  },
+                  "type": "workspaces",
+                  "relationships": {
+                    "project": {
+                      "data": {
+                        "type": "projects",
+                        "id": "${{ steps.lookup_project_id.outputs.project_id }}"
+                      }
+                    }
+                  }
+                }
+              }
+              EOF
+              curl \
+              --header "Authorization: Bearer ${{ secrets.TFE_TOKEN }}" \
+              --header "Content-Type: application/vnd.api+json" \
+              --request POST \
+              --data @payload.json \
+              --output output.txt \
+              https://app.terraform.io/api/v2/organizations/${{ github.repository_owner }}/workspaces
+              echo "workspace_id=$(cat output.txt | jq -r '.[].id')" >> $GITHUB_OUTPUT
 
       - name: Create workspace
         id: create_workspace_prod
@@ -84,7 +103,15 @@ jobs:
                 "name": "${{ github.event.repository.name }}-prod",
                 "auto-apply": "true"
               },
-              "type": "workspaces"
+              "type": "workspaces",
+              "relationships": {
+                "project": {
+                  "data": {
+                    "type": "projects",
+                    "id": "${{ steps.lookup_project_id.outputs.project_id }}"
+                  }
+                }
+              }
             }
           }
           EOF
