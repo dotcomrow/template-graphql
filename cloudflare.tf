@@ -11,6 +11,11 @@ resource "cloudflare_workers_route" "project_route" {
   script   = cloudflare_workers_script.project_script.script_name
 }
 
+resource "cloudflare_r2_bucket" "schemas_bucket" {
+  account_id = var.cloudflare_account_id
+  name       = "schemas-pulsedb-${var.environment}"
+}
+
 resource "null_resource" "project_id" {
   triggers = {
     always_run = timestamp()
@@ -60,7 +65,7 @@ resource "cloudflare_workers_script" "project_script" {
     {
       name        = "SCHEMAS_BUCKET"
       type        = "r2_bucket"
-      bucket_name = "schemas-pulsedb-${var.environment}"
+      bucket_name = cloudflare_r2_bucket.schemas_bucket.name
     },
     {
       name = "PULSE_DATASET"
@@ -99,5 +104,5 @@ resource "cloudflare_workers_script" "project_script" {
     }
   ]
 
-  depends_on = [ data.local_file.load_project_id ]
+  depends_on = [ data.local_file.load_project_id, cloudflare_r2_bucket.schemas_bucket ]
 }
